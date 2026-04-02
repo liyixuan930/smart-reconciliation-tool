@@ -1,81 +1,87 @@
 import streamlit as st
 import pandas as pd
-
-st.title("智能对账工具")
-
-uploaded_bank = st.file_uploader("上传银行流水", type=["xlsx", "xls"])
-uploaded_account = st.file_uploader("上传财务账", type=["xlsx", "xls"])
-
-if uploaded_bank and uploaded_account:
-    # 读取 Excel
-    bank = pd.read_excel(uploaded_bank)
-    account = pd.read_excel(uploaded_account)
-
-    # 保存原始金额列用于匹配（假设列名为“金额”，如果不是请修改）
-    amount_col = "金额"   # ← 这里改成你实际的金额列名（如果不同）
-    
-    # 按金额匹配（使用原始数值）
-    matched = bank.merge(account, on=amount_col, how="inner")
-    unmatched_bank = bank[~bank[amount_col].isin(account[amount_col])]
-    
-    # 将所有数值列（包括整数和浮点数）转换为字符串，避免 Arrow 转换报错
-    def convert_numeric_to_str(df):
-        for col in df.columns:
-            if pd.api.types.is_numeric_dtype(df[col]):
-                df[col] = df[col].astype(str)
-        return df
-    
-    # 转换要显示的 DataFrame
-    matched_display = convert_numeric_to_str(matched.copy())
-    unmatched_bank_display = convert_numeric_to_str(unmatched_bank.copy())
-    
-    st.write(f"✅ 匹配成功：{len(matched)} 条")
-    st.dataframe(matched_display)
-    
-    st.write(f"⚠️ 银行侧未匹配：{len(unmatched_bank)} 条")
-    if len(unmatched_bank) > 0:
-        st.dataframe(unmatched_bank_display)
-
-# 导入新版SDK
+import zhipuai
 from zhipuai import ZhipuAI
 
-# 初始化客户端（用你的API Key）
-client = ZhipuAI(api_key="9bd388bb4f004529ab95f3e69e31fd61.bQIj14sT29ZtzRzH")  
+# ========== 页面配置 ==========
+st.set_page_config(page_title="智能对账工具", layout="wide")
+st.title("🤖 智能对账工具")
+st.markdown("上传银行流水与财务账,自动按金额匹配,AI分析异常原因")
 
-# 添加按钮
-if st.button("🤖 AI 分析未匹配交易"):
-    if len(unmatched_bank) > 0:
-        # 获取未匹配的商户名(根据你的Excel列名修改)
-        merchant_col = "交易对手"
-        if merchant_col in unmatched_bank.columns:
-            merchants = unmatched_bank[merchant_col].tolist()
-            merchants_text = "、".join(str(m) for m in merchants[:10])  
-            prompt = f"以下是一些银行交易记录,但在财务账上没有匹配到.请分析可能的原因(例如未及时记账、商户名不一致、交易未入账等):\n{merchants_text}"
+# ========== 文件上传 ==========
+col1, col2 = st.columns(2)
+with col1:
+    uploaded_bank = st.file_uploader("📂 上传银行流水", type=["xlsx", "xls"])
+with col2:
+    uploaded_account = st.file_uploader("📂 上传财务账", type=["xlsx", "xls"])
+
+if uploaded_bank and uploaded_account:
+    # 读取所有列为字符串，避免整数溢出
+    bank_raw = pd.read_excel(uploaded_bank,dtype=str)
+    account_raw = pd.read_excel(uploaded_account,dtype=str)
+
+    # 金额列名（根据实际列名修改）
+    amount_col = "金额"
+
+    # 制作数值副本用于匹配
+    bank_num = bank_raw.copy()
+    account_num = account_raw.copy()
+    bank_num[amount_col] = pd.to_numeric(bank_num[amount_col], errors='coerce')
+    account_num[amount_col] = pd.to_numeric(account_num[amount_col], errors='coerce')
+
+    # 按金额匹配
+    matched_num = bank_num.merge(account_num, on=amount_col, how="inner")
+    unmatched_bank_num = bank_num[~bank_num[amount_col].isin(account_num[amount_col])]
+
+    # 用索引筛选原始字符串数据用于展示
+    matched = bank_raw.loc[matched_num.index]
+    unmatched_bank = bank_raw.loc[unmatched_bank_num.index]
+
+    # ========== 展示指标 ==========
+    total_bank = len(bank_raw)
+    match_rate = len(matched) / total_bank if total_bank > 0 else 0
+    st.metric("📊 匹配成功率", f"{match_rate:.1%}")
+    
+    # ========== Tab 展示结果 ==========
+    tab1, tab2 = st.tabs(["✅ 匹配成功", "⚠️ 未匹配"])
+    with tab1:
+        st.write(f"共 {len(matched)} 条")
+        st.dataframe(matched)
+    with tab2:
+        st.write(f"共 {len(unmatched_bank)} 条")
+        if len(unmatched_bank) > 0:
+            st.dataframe(unmatched_bank)
         else:
-            # 如果没有商户名列,用金额列
-            amount_col = "金额"
-            if amount_col in unmatched_bank.columns:
-                amounts = unmatched_bank[amount_col].tolist()
-                amounts_text = "、".join(str(a) for a in amounts[:10])
-                prompt = f"以下是一些银行交易金额,但在财务账上没有匹配到.请分析可能的原因:\n{amounts_text}"
-            else:
-                prompt = "未匹配的交易记录存在,但缺少商户名或金额信息,无法具体分析."
+            st.info("全部匹配成功，无异常")
 
-        try:
-            # 新版API调用方式
-            response = client.chat.completions.create(
-                model="glm-4-flash",  # 使用免费模型,或者用 "glm-4"
-                messages=[
-                    {"role": "system", "content": "你是一个专业的财务分析助手."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=500,
-            )
-            ai_answer = response.choices[0].message.content
-            st.success("AI 分析结果:")
-            st.write(ai_answer)
-        except Exception as e:
-            st.error(f"调用 AI 失败:{e}")
-    else:
-        st.info("没有未匹配的交易,无需分析.")
+    # ========== AI 分析 ==========
+    st.divider()
+    st.subheader("🧠 AI 智能分析")
+    
+    # 初始化 AI 客户端
+    client = ZhipuAI(api_key="9bd388bb4f004529ab95f3e69e31fd61.bQIj14sT29ZtzRzH")  
+    
+    if st.button("🔍 分析未匹配原因"):
+        if len(unmatched_bank) > 0:
+            # 获取商户名(根据实际列名修改)
+            merchant_col = "交易对手"  # 改成实际列名
+            if merchant_col in unmatched_bank.columns:
+                merchants = unmatched_bank[merchant_col].tolist()
+                merchants_text = "、".join(str(m) for m in merchants[:10])
+                prompt = f"以下银行交易在财务账上未匹配到,请分析可能原因(如未及时记账、商户名不一致等):\n{merchants_text}"
+            else:
+                prompt = "未匹配交易存在,但缺少商户名信息,无法具体分析."
+            
+            try:
+                response = client.chat.completions.create(
+                    model="glm-4-flash",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.7,
+                )
+                ai_answer = response.choices[0].message.content
+                st.success("分析结果:")
+                st.write(ai_answer)
+            except Exception as e:
+                st.error(f"AI 调用失败:{e}")
+        else:
+            st.info("无未匹配交易，无需分析")
