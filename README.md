@@ -16,11 +16,11 @@
 3. 上传示例Excel文件即可
 
 ## 演示视频
-[点击观看]
-(【智能对账工具 | 银行流水 VS 财务账 | AI自动匹配+异常分析】https://www.bilibili.com/video/BV1wY9FBuErY?vd_source=b76564aa9e293a9390d03cda6f099a86)
+
+[智能对账工具 | 银行流水 VS 财务账 | AI自动匹配+异常分析](https://www.bilibili.com/video/BV1wY9FBuErY?vd_source=b76564aa9e293a9390d03cda6f099a86)
 
 ## 未来改进方向
 - 增加日期+金额双重匹配，提高准确率
-- 调价可视化图表，展示每日对账成功率趋势
+- 添加可视化图表，展示每日对账成功率趋势
 - 支持多语言分析结果（中/英文）
 - 支持导出对账报告为 Excel 或 PDF
