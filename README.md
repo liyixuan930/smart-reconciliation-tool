@@ -6,6 +6,25 @@
 - 展示匹配成功与异常记录
 - AI分析异常交易可能原因
 
+## 技术难点与解决方案
+
+### 难点1：整数溢出导致页面崩溃
+- **现象**：银行流水号（如20230401100100000）过长，Streamlit渲染时报错“int too big to convert”
+- **解决过程**：
+  1. 尝试将金额列转为float，但流水号仍报错
+  2. 查阅资料后，采用“展示与计算分离”思路：读取时所有列先转为字符串（`dtype=str`）
+  3. 匹配时单独将金额列转为数值（`pd.to_numeric`）
+  4. 展示时使用字符串版本，彻底避免溢出
+- **收获**：深入理解了数据类型与前端渲染的关系
+
+### 难点2：AI API版本不兼容
+- **现象**：按旧版文档写`zhipuai.model_api.invoke()`，报错`AttributeError: module 'zhipuai' has no attribute 'model_api'`
+- **解决过程**：
+  1. 查阅智谱AI官方文档，发现SDK已升级到v2
+  2. 改用新版调用方式：`client.chat.completions.create()`
+  3. 修改prompt结构为messages格式
+- **收获**：学会了阅读官方文档和适配API变更
+
 ## 技术栈
 - Python + pandas + Streamlit
 - 智谱AI API
